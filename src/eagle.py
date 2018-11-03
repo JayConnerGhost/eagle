@@ -1,48 +1,68 @@
-#!/usr/bin/python3
+from __future__ import print_function 
+import argparse as ap
+import time
+import sys
+import pyric
+import pyric.pyw as pyw
+import pyric.utils.hardware as hw
+from pyric.utils.channels import rf2ch
 
-import sys, getopt
-import ifaddr
-import pyric             # pyric errors
-import pyric.pyw as pyw  # iw functionality
+def execute(dev):
+      print('setting up...')
+      ifaces=pyw.interfaces()
+      wifaces=pyw.winterfaces()
 
-def main(argv):
-  
-   try:
-      opts, args = getopt.getopt(argv,"hl:i:",["--list","--interfaceName="])
-   except getopt.GetoptError:
-      print ('eagle.py -l <list network interfaces> -i <put interface into monitor mode >')
-      sys.exit(2)
-   for opt, arg in opts:
-      if opt == '-h':   
-         print ('eagle.py -l <list network interfaces> -i <put interface into monitor mode >')
+      if dev  not in ifaces:
+        print("Device {0} is not valid, use one of {1}".format(dev, ifaces))
+        return
+      elif dev not in wifaces:
+        print("Devise {0} is not wireless, use one of {1}".format(dev, wifaces))
 
-         sys.exit()
-      elif opt in ("-l", "--list"):
-        #todo - return list of network interfaces
-        listInterfaces()
-      elif opt in ("-i", "--interfaceName"):
-       #todo put network card into monitor mode
-       listenOnInterface(arg)
- 
-def listInterfaces():
-   print("interfaces") 
-   adapters = ifaddr.get_adapters()
-   for adapter in adapters:
-        print ("IPs of network adapter " + adapter.nice_name)
-        for ip in adapter.ips:
-            print ("   %s/%s" % (ip.ip, ip.network_prefix))
-def listenOnInterface(interfaceName):
+      print("Regulatory Domain Currently: ", pyw.regget()) 
+      dinfo =pyw.devinfo(dev)
+      card =dinfo['card']
+      pinfo = pyw.phyinfo(card)
+      driver = hw.ifdriver(card.dev)
+      chipset =hw.ifchipset(driver)
+      msg = "Using {0} currently in mode: {1}\n".format(card,dinfo['mode'])
+      msg += "\tDriver: {0} Chipset: {1}\n".format(driver,chipset)
+      if dinfo['mode'] == 'managed':
+        msg += "\tcurrently on channel {0} width {1}\n".format(rf2ch(dinfo['RF']),
+                                                               dinfo['CHW'])
+      msg += "\tSupports modes {0}\n".format(pinfo['modes'])
+      msg += "\tSupports commands {0}".format(pinfo['commands'])
+      msg += "\thw addr {0}".format(pyw.macget(card))
+      print(msg)
+
+      print ('Preparing pent0 for monitor mode')
+      pdev='pent0'
+
+      pcard = pyw.devadd(card, pdev, 'monitor')
+
+      for iface in pyw.ifaces(card):
+            if iface[0].dev !=pcard.dev:
+                  print("deleting {0} in mode {1}".format(iface[0],iface[1]))
+                  pyw.devdel(iface[0])
+      pyw.up(pcard)
+      print("using pcard")
+      print("Setting channel to 6 NOHT")
+      pyw.chset(pcard,6,None)
+      msg = "Virtual interface {0} in monitor mode on ch 6".format(pcard)
+      print(msg + ", using hwaddr: {0}".format(pyw.macget(pcard)))
+
+#------
+if __name__ == '__main__':
+    # create arg parser and parse command line args
+    print("Wireless Pentest Environment using PyRIC v{0}".format(pyric.version))
+    argp = ap.ArgumentParser(description="Wireless Pentest")
+    argp.add_argument('-d','--dev',help="Pentesting Wireless Device")
+    args = argp.parse_args()
     try:
-      print("is valid interface " + str(pyw.isinterface(interfaceName)))
-      print("is wireless interface " + str(pyw.iswireless(interfaceName)))
-      w0=pyw.getcard(interfaceName)
-      print(str(w0))
-      print("is valid card "+ str(pyw.validcard(w0)))
-      print("performing a card restart to ensure health ")
-      pyw.down(w0)
-      pyw.up(w0)
-      print("card ready")
-    except pyric.error as e: 
-      print(str(e))
-if __name__ == "__main__":
-   main(sys.argv[1:])
+        dname = args.dev
+        if dname is None:
+            print("usage: python pentest.py -d <dev>")
+            sys.exit(0)
+        else:
+            execute(dname)
+    except pyric.error as e:
+        print(e)

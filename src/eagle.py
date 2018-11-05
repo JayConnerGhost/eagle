@@ -50,6 +50,22 @@ def execute(dev):
       msg = "Virtual interface {0} in monitor mode on ch 6".format(pcard)
       print(msg + ", using hwaddr: {0}".format(pyw.macget(pcard)))
 
+      try:
+          print('now ready to execute')
+          print('hit Ctrl + C to quit and restore')
+          while True: time.sleep(1)
+      except KeyboardInterrupt:
+          pass
+#------
+
+    #------
+      print("restoring ", card, 'mode=', dinfo['mode'], 'mac=', dinfo['mac'])
+      card =pyw.devadd(pcard, card.dev,dinfo['mode'])
+      print('Deleting', pcard)
+      pyw.devdel(pcard)
+      pyw.up(card)
+      print ("card ", card, " restored")
+
 #------
 if __name__ == '__main__':
     # create arg parser and parse command line args
